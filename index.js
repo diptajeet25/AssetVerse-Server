@@ -28,6 +28,7 @@ async function run() {
     await client.connect();
     const db=client.db('asset_verse')
     const usersCollection=db.collection('users');
+    const assetsCollection=db.collection('assets')
 
     app.get('/', (req, res) => {
   res.send('hello world');
@@ -35,9 +36,27 @@ async function run() {
 
 //user related API
 
+app.get('/user',async(req,res)=>
+{
+  const query={}
+  const email=req.query.email;
+  query.email=email
+  const result=await usersCollection.findOne(query);
+  res.send(result);
+  
+})
+
 app.post("/users",async(req,res)=>
 {
   const data=req.body;
+  const email=data.email;
+  const query={}
+  query.email=email
+  const userExist=await usersCollection.findOne(query);
+  if(userExist)
+  {
+    return res.send({message:"User Already Saved in DB"})
+  }
   if(!data.dateOfBirth)
   {
     data.dateOfBirth = "2000-01-01";
@@ -50,6 +69,25 @@ app.post("/users",async(req,res)=>
   data.createdAt=new Date()
   const result=await usersCollection.insertOne(data)
   res.send(result)
+})
+
+//Asset related API
+
+app.get("/assets",async(req,res)=>
+{
+  const query={}
+  const email=req.query.email;
+  query.email=email
+  const result=await assetsCollection.find(query).toArray();
+  res.send(result);
+})
+
+app.post("/asset",async(req,res)=>
+{
+  const data=req.body;
+  const result= await assetsCollection.insertOne(data);
+  res.send(result);
+
 })
 
 
