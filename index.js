@@ -93,6 +93,24 @@ app.get('/allassets',async(req,res)=>
 
 })
 
+app.get("/myassets",async(req,res)=>
+{
+  const employeeEmail=req.query.employeeEmail;
+  const query={employeeEmail:employeeEmail,status:"active"}
+  const result=await employeeAffiliationCollection.find(query).toArray();
+
+  if(result.length===0)
+  {
+    return res.send({message:"No active employee affiliation found."});
+  }
+  const hrEmails = result.map(a => a.hrEmail);
+  const assetsQuery={hrEmail:{$in:hrEmails},status:"assigned"};
+  const assignedAssets=await assignedAssetsCollection.find(assetsQuery).toArray();
+  res.send(assignedAssets);
+  
+
+})
+
 app.get('/assetscount',async(req,res)=>
 {
   const hrEmail=req.query.hrEmail;
@@ -130,6 +148,26 @@ const updateDoc={
 }
 const result=await assetsCollection.updateOne(query,updateDoc);
 res.send(result);
+
+})
+
+app.patch('/return-asset/:id',async(req,res)=>
+{
+  const id=req.params.id;
+  const query={_id: new ObjectId(id)}
+  const updateDoc={
+    $set:{
+      status:"returned",
+      returnDate:new Date(),
+    }
+  }
+  const result=await assignedAssetsCollection.updateOne(query,updateDoc);
+  const query2={_id:new ObjectId(req.body.assetId)}
+  const updateAssetDoc={
+    $inc: { availableQuantity: 1 },
+  }
+  const result2=await assetsCollection.updateOne(query2,updateAssetDoc);
+  res.send({assignedAssetUpdate:result,assetUpdate:result2});
 
 })
 
