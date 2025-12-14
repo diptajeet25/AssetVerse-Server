@@ -208,7 +208,7 @@ const updateRequestDoc={
 const result=await requestsCollection.updateOne(query,updateRequestDoc);
 const assignedAssetData={
   assetId:assetId,
-  assetName:availableAsset.productName,
+  assetName:availableAsset.productname,
   assetImage:availableAsset.productImage,
   assetType:availableAsset.productType,
   employeeEmail:req.body.requesterEmail,
@@ -235,6 +235,23 @@ catch (err) {
 
 });
 
+app.patch('/requests-reject/:id',async(req,res)=>
+{
+  const id=req.params.id;
+  const email=req.body.hrEmail;
+  const query={_id: new ObjectId(id)}
+  const updateDoc={
+    $set:{
+      requestStatus:"rejected",
+      processedBy:email,
+      rejectionDate:new Date()
+
+  }
+}
+const result=await requestsCollection.updateOne(query,updateDoc);
+res.send(result);
+}
+)
   
 
    
