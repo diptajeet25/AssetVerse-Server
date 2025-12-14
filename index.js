@@ -93,6 +93,16 @@ app.get('/allassets',async(req,res)=>
 
 })
 
+app.get('/assetscount',async(req,res)=>
+{
+  const hrEmail=req.query.hrEmail;
+  const query={hrEmail:hrEmail,status:"assigned"}
+  const count=await assignedAssetsCollection.find(query).toArray();
+  res.send(count);
+ 
+
+})
+
 app.get("/assets",async(req,res)=>
 {
   const query={}
@@ -132,6 +142,39 @@ app.delete('/asset/:id',async(req,res)=>
 
 })
 
+//employee related API
+app.get('/employees',async(req,res)=>
+{
+  const query={}
+  const hrEmail=req.query.hrEmail;
+  query.hrEmail=hrEmail
+  query.status="active"
+  const result=await employeeAffiliationCollection.find(query).toArray();
+  res.send(result);
+})
+
+app.patch("/deleteEmployee",async(req,res)=>
+{
+const hrEmail=req.body.hrEmail;
+const employeeEmail=req.body.employeeEmail;
+
+const query={employeeEmail:employeeEmail,hrEmail:hrEmail,status:"active"}
+const updateDoc={
+  $set:{
+    status:"inactive",
+  }
+
+}
+const result=await employeeAffiliationCollection.updateOne(query,updateDoc);
+const updateUserDoc={
+  $inc: { currentEmployees: -1 },
+  $set: { updatedAt: new Date() }
+}
+const updateUser=await usersCollection.updateOne({email:hrEmail},updateUserDoc);
+res.send({employeeUpdate:result,userUpdate:updateUser});
+  
+})
+
 
 //request related API
 app.get('/requests',async(req,res)=>
@@ -144,6 +187,8 @@ app.get('/requests',async(req,res)=>
 
 
 })
+
+
 app.post('/requestAsset',async(req,res)=>
 {
   const data=req.body;
@@ -166,7 +211,7 @@ const request=await requestsCollection.findOne(query);
 
   if(availableAsset.availableQuantity>0)
   {
-    const employeeExits=await employeeAffiliationCollection.findOne({employeeEmail:req.body.requesterEmail,hrEmail:hrEmail,status:"active"});
+    const employeeExits=await employeeAffiliationCollection.findOne({employeeEmail:req.body.requesterEmail,hrEmail:hrEmail});
     if(!employeeExits)
     {
       if(user.currentEmployees<user.packageLimit)
@@ -192,6 +237,26 @@ await usersCollection.updateOne({email:hrEmail}, updateDoc);
     else{
       return res.send({message:"You have reached your package limit. Cannot approve more requests."});
     } 
+  }
+  else if(employeeExits.status==="inactive")
+  {
+    if (user.currentEmployees >= user.packageLimit) {
+    return res.send({ message: "You have reached your package limit." });
+  }
+
+
+    const updateEmployeeDoc={
+      $set:{
+        status:"active",
+        affiliationDate:new Date(),
+      }
+    }
+    await employeeAffiliationCollection.updateOne({employeeEmail:req.body.requesterEmail,hrEmail:hrEmail},updateEmployeeDoc);
+    const updateDoc = {
+      $inc: { currentEmployees: 1 },
+      $set: { updatedAt: new Date() }
+    };
+    await usersCollection.updateOne({email:hrEmail}, updateDoc);
   }
   
 const updateAssetDoc={
