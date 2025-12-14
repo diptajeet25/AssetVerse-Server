@@ -84,6 +84,24 @@ app.post("/users",async(req,res)=>
   const result=await usersCollection.insertOne(data)
   res.send(result)
 })
+//company related API
+
+app.get('/myCompanies',async(req,res)=>
+{
+  const employeeEmail=req.query.employeeEmail;
+  const query={employeeEmail:employeeEmail,status:"active"}
+  const result=await employeeAffiliationCollection.find(query).toArray();
+  res.send(result);
+})
+app.get("/teamMembers",async(req,res)=>
+{
+  const companyName=req.query.companyName;
+  const employeeEmail=req.query.employeeEmail;
+  const query={companyName:companyName,employeeEmail:{$ne:employeeEmail},status:"active"}
+  const result=await employeeAffiliationCollection.find(query).toArray();
+  res.send(result);
+
+})
 
 //Asset related API
 app.get('/allassets',async(req,res)=>
