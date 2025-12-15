@@ -48,6 +48,15 @@ app.get('/user',async(req,res)=>
   res.send(result);
   
 })
+
+app.get('/birthDay',async(req,res)=>
+{
+const email=req.query.email;
+const result=await usersCollection.findOne({email:email});
+console.log(result);
+res.send(result);
+})
+
 app.patch('/user/:id',async(req,res)=>
 {
   const id=req.params.id;
@@ -99,9 +108,11 @@ app.get("/teamMembers",async(req,res)=>
   const employeeEmail=req.query.employeeEmail;
   const query={companyName:companyName,employeeEmail:{$ne:employeeEmail},status:"active"}
   const result=await employeeAffiliationCollection.find(query).toArray();
+  
   res.send(result);
 
 })
+
 
 //Asset related API
 app.get('/allassets',async(req,res)=>
