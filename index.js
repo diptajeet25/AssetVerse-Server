@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+var admin = require("firebase-admin");
 require('dotenv').config()
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const e = require('express');
@@ -14,6 +15,10 @@ app.use(express.json());
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hm8fata.mongodb.net/?appName=Cluster0`;
+var serviceAccount = require("./assetverse--firebase-adminsdk-fbsvc.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -22,6 +27,31 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
+
+const verifyFirebaseToken=async(req,res,next)=>
+{
+  const token=req.headers.authorization;
+  if(!token)
+  {
+    return res.status(401).send({message:"Unauthorized access"});
+  }
+
+
+  try{
+     const firebaseToken=token.split(" ")[1];
+     const decodedUser=await admin.auth().verifyIdToken(firebaseToken);
+   
+      req.decodedEmail=decodedUser.email;
+     next();
+  }
+  catch
+{
+  return res.status(401).send({message:"Unauthorized access"});
+
+}
+}
+
+
 
 async function run() {
   try {
@@ -33,23 +63,48 @@ async function run() {
     const requestsCollection=db.collection('requests');
     const employeeAffiliationCollection=db.collection('employeeAffiliation');
     const assignedAssetsCollection=db.collection('assignedAssets');
+
+
+
+
+    const verifyHR=async(req,res,next)=>
+{
+  const email=req.decodedEmail;
+  const query={email:email}
+  const result=await usersCollection.findOne(query);
+  if(result && result.role==="HR")
+  {
+    next();
+  }
+  else
+  {
+    return res.status(403).send({message:"forbidden access"});
+  }
+}
     app.get('/', (req, res) => {
   res.send('hello world');
   });
 
 //user related API
 
-app.get('/user',async(req,res)=>
+app.get('/user',verifyFirebaseToken,async(req,res)=>
 {
   const query={}
   const email=req.query.email;
+  if(req.decodedEmail!==email)
+  {
+    return res.status(403).send({message:"forbidden access"});
+  }
   query.email=email
   const result=await usersCollection.findOne(query);
   res.send(result);
   
 })
 
-app.get('/birthDay',async(req,res)=>
+
+
+
+app.get('/birthDay',verifyFirebaseToken,async(req,res)=>
 {
 const email=req.query.email;
 const result=await usersCollection.findOne({email:email});
@@ -57,15 +112,21 @@ console.log(result);
 res.send(result);
 })
 
-app.patch('/user/:id',async(req,res)=>
+app.patch('/user/:id',verifyFirebaseToken,async(req,res)=>
 {
   const id=req.params.id;
   const data=req.body;
+  console.log(id,data);
   const query={_id: new ObjectId(id)}
-  const updateDoc={
-    $set: data
+ const updateData = {
+  $set:{
+  name: data.name,
+  profileImage: data.profileImage,
+  dateOfBirth: data.dateOfBirth,
+  updatedAt: new Date()
   }
-  const result=await usersCollection.updateOne(query,updateDoc);
+};
+  const result=await usersCollection.updateOne(query,updateData);
   res.send(result);
 });
 
@@ -95,14 +156,14 @@ app.post("/users",async(req,res)=>
 })
 //company related API
 
-app.get('/myCompanies',async(req,res)=>
+app.get('/myCompanies',verifyFirebaseToken,async(req,res)=>
 {
   const employeeEmail=req.query.employeeEmail;
   const query={employeeEmail:employeeEmail,status:"active"}
   const result=await employeeAffiliationCollection.find(query).toArray();
   res.send(result);
 })
-app.get("/teamMembers",async(req,res)=>
+app.get("/teamMembers",verifyFirebaseToken,async(req,res)=>
 {
   const companyName=req.query.companyName;
   const employeeEmail=req.query.employeeEmail;
@@ -115,16 +176,34 @@ app.get("/teamMembers",async(req,res)=>
 
 
 //Asset related API
-app.get('/allassets',async(req,res)=>
+app.get('/allassets',verifyFirebaseToken,async(req,res)=>
 {
   const result=await assetsCollection.find().toArray();
   res.send(result);
 
 })
 
-app.get("/myassets",async(req,res)=>
+app.get('/myassetsToassigninModal',verifyFirebaseToken,async(req,res)=>
+{
+  const hrEmail=req.query.hrEmail;
+
+ 
+  const query={hrEmail:hrEmail}
+  const result=await assetsCollection.find(query).toArray();
+  res.send(result);
+
+});
+
+app.get("/myassets",verifyFirebaseToken,async(req,res)=>
 {
   const employeeEmail=req.query.employeeEmail;
+
+  
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const skip = (page - 1) * limit;
+
+
   const query={employeeEmail:employeeEmail,status:"active"}
   const result=await employeeAffiliationCollection.find(query).toArray();
 
@@ -133,14 +212,25 @@ app.get("/myassets",async(req,res)=>
     return res.send({message:"No active employee affiliation found."});
   }
   const hrEmails = result.map(a => a.hrEmail);
-  const assetsQuery={hrEmail:{$in:hrEmails},status:"assigned"};
-  const assignedAssets=await assignedAssetsCollection.find(assetsQuery).toArray();
-  res.send(assignedAssets);
+  const assetsQuery={hrEmail:{$in:hrEmails},status:"assigned",employeeEmail:employeeEmail};
+  const assignedAssets=await assignedAssetsCollection.find(assetsQuery).skip(skip).limit(limit).toArray();
+   const total = await assignedAssetsCollection.countDocuments(assetsQuery);
+
+  const totalPages = Math.ceil(total / limit);
+  
+    res.send({
+    assets: assignedAssets,
+    total,
+    totalPages,
+    currentPage: page
+  });
+});
+
   
 
-})
 
-app.get('/assetscount',async(req,res)=>
+
+app.get('/assetscount',verifyFirebaseToken,async(req,res)=>
 {
   const hrEmail=req.query.hrEmail;
   const query={hrEmail:hrEmail,status:"assigned"}
@@ -150,24 +240,37 @@ app.get('/assetscount',async(req,res)=>
 
 })
 
-app.get("/assets",async(req,res)=>
+app.get("/assets",verifyFirebaseToken,verifyHR,async(req,res)=>
 {
   const query={}
-  const email=req.query.email;
-  query.email=email
+  const email=req.query.hrEmail;
+  query.hrEmail=email
+  console.log(query);
   const result=await assetsCollection.find(query).toArray();
   res.send(result);
 })
 
-app.post("/asset",async(req,res)=>
+app.post("/asset",verifyFirebaseToken,verifyHR,async(req,res)=>
 {
   const data=req.body;
   const result= await assetsCollection.insertOne(data);
   res.send(result);
 
 })
+app.post("/assignAssetByHR",verifyFirebaseToken,async(req,res)=>
+{
+  const data=req.body;
+  const result=await assignedAssetsCollection.insertOne(data);
+  const query={_id:new ObjectId(data.assetId)}
+  const updateDoc={
+    $inc: { availableQuantity: -1 },
+  }
+  const updateAsset=await assetsCollection.updateOne(query,updateDoc);
+  res.send({assignedAsset:result,updatedAsset:updateAsset});
 
-app.patch('/asset/:id',async(req,res)=>
+});
+
+app.patch('/asset/:id',verifyFirebaseToken,async(req,res)=>
 {
 const id=req.params.id;
 const data=req.body;
@@ -180,7 +283,7 @@ res.send(result);
 
 })
 
-app.patch('/return-asset/:id',async(req,res)=>
+app.patch('/return-asset/:id',verifyFirebaseToken,async(req,res)=>
 {
   const id=req.params.id;
   const query={_id: new ObjectId(id)}
@@ -200,7 +303,7 @@ app.patch('/return-asset/:id',async(req,res)=>
 
 })
 
-app.delete('/asset/:id',async(req,res)=>
+app.delete('/asset/:id',verifyFirebaseToken,async(req,res)=>
 {
   const id=req.params.id;
   const query={_id: new ObjectId(id)}
@@ -210,17 +313,23 @@ app.delete('/asset/:id',async(req,res)=>
 })
 
 //employee related API
-app.get('/employees',async(req,res)=>
+app.get('/employees',verifyFirebaseToken,verifyHR,async(req,res)=>
 {
   const query={}
   const hrEmail=req.query.hrEmail;
+
+if(req.decodedEmail!==hrEmail)
+{
+  return res.status(403).send({message:"forbidden access"});
+}
+
   query.hrEmail=hrEmail
   query.status="active"
   const result=await employeeAffiliationCollection.find(query).toArray();
   res.send(result);
 })
 
-app.patch("/deleteEmployee",async(req,res)=>
+app.patch("/deleteEmployee",verifyFirebaseToken,async(req,res)=>
 {
 const hrEmail=req.body.hrEmail;
 const employeeEmail=req.body.employeeEmail;
@@ -244,10 +353,14 @@ res.send({employeeUpdate:result,userUpdate:updateUser});
 
 
 //request related API
-app.get('/requests',async(req,res)=>
+app.get('/requests',verifyFirebaseToken,verifyHR,async(req,res)=>
 {
   const query={}
   const hremail=req.query.hrEmail;
+  if(req.decodedEmail!==hremail)
+  {
+    return res.status(403).send({message:"forbidden access"});
+  }
   query.hrEmail=hremail
   const result=await requestsCollection.find(query).toArray();
   res.send(result);
@@ -256,14 +369,14 @@ app.get('/requests',async(req,res)=>
 })
 
 
-app.post('/requestAsset',async(req,res)=>
+app.post('/requestAsset',verifyFirebaseToken,async(req,res)=>
 {
   const data=req.body;
   const result=await requestsCollection.insertOne(data);
   res.send(result);
 
 })
-app.patch('/requests-approve/:id',async(req,res)=>
+app.patch('/requests-approve/:id',verifyFirebaseToken,async(req,res)=>
 {
   try{
   const id=req.params.id;
@@ -352,7 +465,7 @@ const assignedAssetData={
 }
 const assignedResult=await assignedAssetsCollection.insertOne(assignedAssetData);
 
-res.send({requestUpdate:result,assignedAsset:assignedResult});
+res.send({requestUpdate:result,assignedAsset:assignedResult,message:"Request approved successfully."});
 
 }
   else{
@@ -367,7 +480,7 @@ catch (err) {
 
 });
 
-app.patch('/requests-reject/:id',async(req,res)=>
+app.patch('/requests-reject/:id',verifyFirebaseToken,async(req,res)=>
 {
   const id=req.params.id;
   const email=req.body.hrEmail;
@@ -381,7 +494,7 @@ app.patch('/requests-reject/:id',async(req,res)=>
   }
 }
 const result=await requestsCollection.updateOne(query,updateDoc);
-res.send(result);
+res.send({result,message:"Request rejected successfully."});
 }
 )
   
