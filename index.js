@@ -4,6 +4,8 @@ var admin = require("firebase-admin");
 require('dotenv').config()
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const e = require('express');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -69,6 +71,7 @@ async function run() {
     const requestsCollection=db.collection('requests');
     const employeeAffiliationCollection=db.collection('employeeAffiliation');
     const assignedAssetsCollection=db.collection('assignedAssets');
+    const paymentsCollection=db.collection('payments');
 
 
 
@@ -97,6 +100,8 @@ app.get('/user',verifyFirebaseToken,async(req,res)=>
 {
   const query={}
   const email=req.query.email;
+
+  console.log(email);
   if(req.decodedEmail!==email)
   {
     return res.status(403).send({message:"forbidden access"});
@@ -248,6 +253,8 @@ if(req.decodedEmail!==hrEmail)
 
 })
 
+
+
   
 
 
@@ -390,6 +397,19 @@ app.get('/requests',verifyFirebaseToken,verifyHR,async(req,res)=>
 
 })
 
+app.get('/requestForChart',verifyFirebaseToken,verifyHR,async(req,res)=>
+{
+  const hrEmail=req.query.hrEmail;
+if(req.decodedEmail!==hrEmail)
+{
+  return res.status(403).send({message:"forbidden access"});
+}
+  const query={hrEmail:hrEmail}
+  const result=await requestsCollection.find(query).toArray();
+  res.send(result);
+
+})
+
 
 app.post('/requestAsset',verifyFirebaseToken,async(req,res)=>
 {
@@ -519,6 +539,96 @@ const result=await requestsCollection.updateOne(query,updateDoc);
 res.send({result,message:"Request rejected successfully."});
 }
 )
+
+//payment related API
+
+
+app.get("/payments",verifyFirebaseToken,verifyHR,async(req,res)=>
+  {
+    const hrEmail=req.query.hrEmail;
+    if(req.decodedEmail!==hrEmail)
+    {
+      return res.status(403).send({message:"forbidden access"});
+    }
+    const query={hrEmail:hrEmail}
+    const result=await paymentsCollection.find(query).sort({paymentDate:-1}).toArray();
+    res.send(result);
+
+})
+
+app.post('/create-checkout-session',verifyFirebaseToken,async(req,res)=>
+{
+  const data=req.body;
+  const amount=data.price*100;
+  const employeeLimit=data.employeeLimit;
+  console.log(employeeLimit);
+  const session =await stripe.checkout.sessions.create({
+
+       line_items: [
+      { 
+       price_data: {
+          currency: 'usd',
+          unit_amount: amount,
+          product_data:{
+             name: `${data.packageName} Package - $${data.price}`
+          
+
+          }
+       },
+        quantity: 1,
+      },
+    ],
+    customer_email:data.hrEmail,
+
+    metadata:{
+      hrEmail:data.hrEmail,
+      packageName:data.packageName,
+      packagePrice:data.price,
+      packageLimit:data.employeeLimit
+    },
+    mode: 'payment',
+
+
+    success_url: `${process.env.STRIPE_DOMAIN}/dashboard/subscription?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.STRIPE_DOMAIN}`,
+
+  })
+ 
+  res.send({url:session.url})
+
+})
+
+app.patch('/payment-successful',verifyFirebaseToken,async(req,res)=>
+{
+   console.log("🔥 payment-successful route HIT");
+  const sessionId=req.query.session_id;
+  console.log(sessionId);
+  const session=await stripe.checkout.sessions.retrieve(sessionId);
+  console.log(session);
+  if(session.payment_status==='paid')
+  {
+    const paymentData={
+      hrEmail:session.metadata.hrEmail,
+      packageName:session.metadata.packageName,
+      packagePrice:session.metadata.packagePrice,
+      paymentIntent:session.payment_intent,
+      paymentDate:new Date(),
+      status:"completed"
+
+    }
+    const result=await paymentsCollection.insertOne(paymentData);
+    const updateUserDoc={
+      $set:{
+        subscription:session.metadata.packageName,
+        packageLimit:Number(session.metadata.packageLimit)
+      }
+    }
+    const updateUser=await usersCollection.updateOne({email:session.metadata.hrEmail},updateUserDoc);
+
+    res.send(updateUser);
+  }
+
+});
 
 
   
