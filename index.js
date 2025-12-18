@@ -234,8 +234,7 @@ if(req.decodedEmail!==hrEmail)
 }
   const query={hrEmail:hrEmail,status:"assigned"}
   const result=await assignedAssetsCollection.find(query).toArray();
-  console.log(result);
-
+  res.send(result);
 
 })
 
