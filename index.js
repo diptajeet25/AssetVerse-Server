@@ -108,7 +108,7 @@ app.get('/birthDay',verifyFirebaseToken,async(req,res)=>
 {
 const email=req.query.email;
 const result=await usersCollection.findOne({email:email});
-console.log(result);
+
 res.send(result);
 })
 
@@ -116,7 +116,6 @@ app.patch('/user/:id',verifyFirebaseToken,async(req,res)=>
 {
   const id=req.params.id;
   const data=req.body;
-  console.log(id,data);
   const query={_id: new ObjectId(id)}
  const updateData = {
   $set:{
@@ -226,6 +225,20 @@ app.get("/myassets",verifyFirebaseToken,async(req,res)=>
   });
 });
 
+app.get("/assetsAssignedforChart",verifyFirebaseToken,verifyHR,async(req,res)=>
+{
+  const hrEmail=req.query.hrEmail;
+if(req.decodedEmail!==hrEmail)
+{
+  return res.status(403).send({message:"forbidden access"});
+}
+  const query={hrEmail:hrEmail,status:"assigned"}
+  const result=await assignedAssetsCollection.find(query).toArray();
+  console.log(result);
+
+
+})
+
   
 
 
@@ -245,7 +258,7 @@ app.get("/assets",verifyFirebaseToken,verifyHR,async(req,res)=>
   const query={}
   const email=req.query.hrEmail;
   query.hrEmail=email
-  console.log(query);
+
   const result=await assetsCollection.find(query).toArray();
   res.send(result);
 })
@@ -497,6 +510,8 @@ const result=await requestsCollection.updateOne(query,updateDoc);
 res.send({result,message:"Request rejected successfully."});
 }
 )
+
+
   
 
    
