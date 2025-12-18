@@ -15,7 +15,13 @@ app.use(express.json());
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hm8fata.mongodb.net/?appName=Cluster0`;
-var serviceAccount = require("./assetverse--firebase-adminsdk-fbsvc.json");
+const decoded = Buffer.from(
+  process.env.FB_SERVICE_KEY,
+  'base64'
+).toString('utf8');
+
+const serviceAccount = JSON.parse(decoded);
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
@@ -232,9 +238,13 @@ if(req.decodedEmail!==hrEmail)
 {
   return res.status(403).send({message:"forbidden access"});
 }
+
   const query={hrEmail:hrEmail,status:"assigned"}
+ 
   const result=await assignedAssetsCollection.find(query).toArray();
+  console.log(result);
   res.send(result);
+
 
 })
 
