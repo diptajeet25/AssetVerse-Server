@@ -17,8 +17,7 @@ app.use(express.json());
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hm8fata.mongodb.net/?appName=Cluster0`;
-const decoded = Buffer.from(
-  process.env.FB_SERVICE_KEY,
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY,
   'base64'
 ).toString('utf8');
 
@@ -64,7 +63,7 @@ const verifyFirebaseToken=async(req,res,next)=>
 async function run() {
   try {
    
-    await client.connect();
+    // await client.connect();
     const db=client.db('asset_verse')
     const usersCollection=db.collection('users');
     const assetsCollection=db.collection('assets');
@@ -101,7 +100,7 @@ app.get('/user',verifyFirebaseToken,async(req,res)=>
   const query={}
   const email=req.query.email;
 
-  console.log(email);
+
   if(req.decodedEmail!==email)
   {
     return res.status(403).send({message:"forbidden access"});
@@ -247,7 +246,7 @@ if(req.decodedEmail!==hrEmail)
   const query={hrEmail:hrEmail,status:"assigned"}
  
   const result=await assignedAssetsCollection.find(query).toArray();
-  console.log(result);
+
   res.send(result);
 
 
@@ -515,7 +514,7 @@ res.send({requestUpdate:result,assignedAsset:assignedResult,message:"Request app
   }
 }
 catch (err) {
-    console.error(err);
+
     return res.status(500).send({ message: "Approval failed" });
   }
 
@@ -561,7 +560,7 @@ app.post('/create-checkout-session',verifyFirebaseToken,async(req,res)=>
   const data=req.body;
   const amount=data.price*100;
   const employeeLimit=data.employeeLimit;
-  console.log(employeeLimit);
+
   const session =await stripe.checkout.sessions.create({
 
        line_items: [
@@ -600,11 +599,11 @@ app.post('/create-checkout-session',verifyFirebaseToken,async(req,res)=>
 
 app.patch('/payment-successful',verifyFirebaseToken,async(req,res)=>
 {
-   console.log("🔥 payment-successful route HIT");
+ 
   const sessionId=req.query.session_id;
-  console.log(sessionId);
+
   const session=await stripe.checkout.sessions.retrieve(sessionId);
-  console.log(session);
+
   if(session.payment_status==='paid')
   {
     const paymentData={
@@ -614,8 +613,14 @@ app.patch('/payment-successful',verifyFirebaseToken,async(req,res)=>
       paymentIntent:session.payment_intent,
       paymentDate:new Date(),
       status:"completed"
-
     }
+const paymentExit=await paymentsCollection.findOne({paymentIntent:session.payment_intent});
+if(paymentExit)
+{
+  return  res.send({message:"Payment already recorded."});
+}
+
+
     const result=await paymentsCollection.insertOne(paymentData);
     const updateUserDoc={
       $set:{
@@ -634,7 +639,7 @@ app.patch('/payment-successful',verifyFirebaseToken,async(req,res)=>
   
 
    
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     
